@@ -1,0 +1,25 @@
+{{- if .Values.monitoring.prometheusRules }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "canvas.fullname" . }}
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+    release: robusta
+spec:
+  groups:
+    - name: canvas.rules
+      rules:
+        - alert: CanvasWebNotReady
+          expr: kube_deployment_status_replicas_available{deployment="{{ include "canvas.fullname" . }}-web"} < 1
+          for: 5m
+          labels: { severity: critical }
+          annotations: { summary: "No Canvas web pods are available" }
+        - alert: CanvasJobsCrashing
+          expr: increase(kube_pod_container_status_restarts_total{container="jobs",pod=~"{{ include "canvas.fullname" . }}-jobs-.*"}[15m]) > 2
+          labels: { severity: warning }
+          annotations: { summary: "Canvas job workers restarted more than twice in 15m" }
+        - alert: CanvasMigrationFailed
+          expr: kube_job_status_failed{job_name=~"{{ include "canvas.fullname" . }}-migrate-.*"} > 0
+          labels: { severity: critical }
+          annotations: { summary: "Canvas migration job failed; the release is blocked" }
+{{- end }}

@@ -1,0 +1,14 @@
+# Minimal values for chart CI on kind: one replica each, small requests, no ingress.
+canvas:
+  domain: canvas.localhost
+  scheme: http
+  existingSecret: canvas-secrets
+web:
+  replicas: 1
+  resources: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 2Gi } }
+  pdb: { enabled: false }
+jobs:
+  resources: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 2Gi } }
+  pdb: { enabled: false }
+migrate:
+  resources: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 2Gi } }

@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "canvas.fullname" . }}
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 2g
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    {{- with .Values.ingress.annotations }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.canvas.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ include "canvas.fullname" . }}-web, port: { name: http } } }
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# Postgres and Redis accept traffic only from Canvas pods (web, jobs, migrate).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "canvas.fullname" . }}-data
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [postgres, redis] }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{- include "canvas.selector" . | nindent 14 }}
+        {{- range .Values.networkPolicy.allowFromNamespaces }}
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ . | quote }} } }   # e.g. monitoring, keda
+        {{- end }}
+{{- end }}

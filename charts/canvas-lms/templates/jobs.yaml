@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "canvas.fullname" . }}-jobs
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jobs
+spec:
+  {{- if not .Values.jobs.keda.enabled }}
+  replicas: {{ .Values.jobs.replicas }}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "canvas.selector" . | nindent 6 }}
+      app.kubernetes.io/component: jobs
+  template:
+    metadata:
+      labels: {{- include "canvas.selector" . | nindent 8 }}
+        app.kubernetes.io/component: jobs
+      annotations:
+        checksum/config: {{ include "canvas.configFiles" . | sha256sum }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.jobs.terminationGracePeriodSeconds }}
+      {{- include "canvas.spread" (dict "root" . "component" "jobs") | nindent 6 }}
+      initContainers: {{- include "canvas.waitForDb" . | nindent 8 }}
+      containers:
+        - name: jobs
+          image: {{ include "canvas.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.restrictedSecurityContext | nindent 12 }}
+          command: ["bundle", "exec", "script/delayed_job", "run"]
+          env: {{- include "canvas.env" . | nindent 12 }}
+          envFrom: {{- include "canvas.envFrom" . | nindent 12 }}
+          volumeMounts: {{- include "canvas.mounts" . | nindent 12 }}
+          resources: {{- toYaml .Values.jobs.resources | nindent 12 }}
+      volumes: {{- include "canvas.volumes" . | nindent 8 }}
