@@ -1,0 +1,95 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "canvas.fullname" . }}-postgres
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "canvas.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels: {{- include "canvas.selector" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels: {{- include "canvas.selector" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgresql.image }}
+          args: ["-c", "max_locks_per_transaction=640"]
+          env:
+            - { name: POSTGRES_USER, value: {{ .Values.database.user }} }
+            - { name: POSTGRES_DB, value: {{ .Values.database.name }} }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.canvas.existingSecret }}, key: DB_PASSWORD } }
+          ports: [{ containerPort: 5432, name: pg }]
+          readinessProbe: { exec: { command: ["pg_isready", "-U", {{ .Values.database.user | quote }}] }, periodSeconds: 5 }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: {{ .Values.postgresql.storage }} } } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "canvas.fullname" . }}-postgres
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "canvas.selector" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  ports: [{ port: 5432, targetPort: pg }]
+{{- end }}
+{{- if .Values.redisDev.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "canvas.fullname" . }}-redis
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "canvas.selector" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels: {{- include "canvas.selector" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redisDev.image }}
+          command: ["sh", "-c", 'exec redis-server --requirepass "$REDIS_PASSWORD" --appendonly yes']
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.canvas.existingSecret }}, key: REDIS_PASSWORD } }
+          ports: [{ containerPort: 6379, name: redis }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "canvas.fullname" . }}-redis
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "canvas.selector" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  ports: [{ port: 6379, targetPort: redis }]
+{{- end }}
+{{- if eq .Values.storage.mode "pvc" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "canvas.fullname" . }}-files
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+  annotations: { helm.sh/resource-policy: keep }
+spec:
+  accessModes: [{{ .Values.storage.pvc.accessMode }}]
+  {{- with .Values.storage.pvc.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources: { requests: { storage: {{ .Values.storage.pvc.size }} } }
+{{- end }}

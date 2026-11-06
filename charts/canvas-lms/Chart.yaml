@@ -1,0 +1,8 @@
+apiVersion: v2
+name: canvas-lms
+description: Production-oriented Helm chart for Canvas LMS (web, jobs, migration hook, monitoring, LTI 1.3 keys)
+type: application
+version: 1.0.0-alpha.1
+appVersion: "2025-04-23.99"
+home: https://github.com/instructure/canvas-lms
+sources: [https://github.com/ulevitsky/canvas-lms-helm]

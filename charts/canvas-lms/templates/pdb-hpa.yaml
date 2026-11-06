@@ -1,0 +1,64 @@
+{{- range $c := list "web" "jobs" }}
+{{- $v := index $.Values $c }}
+{{- if $v.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "canvas.fullname" $ }}-{{ $c }}
+  labels: {{- include "canvas.labels" $ | nindent 4 }}
+spec:
+  minAvailable: {{ $v.pdb.minAvailable }}
+  selector:
+    matchLabels: {{- include "canvas.selector" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $c }}
+{{- end }}
+{{- end }}
+{{- if .Values.web.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "canvas.fullname" . }}-web
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "canvas.fullname" . }}-web }
+  minReplicas: {{ .Values.web.hpa.min }}
+  maxReplicas: {{ .Values.web.hpa.max }}
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ .Values.web.hpa.cpu }} } }
+{{- end }}
+{{- if .Values.jobs.keda.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "canvas.fullname" . }}-keda-pg
+spec:
+  secretTargetRef:
+    - { parameter: password, name: {{ .Values.canvas.existingSecret }}, key: DB_PASSWORD }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "canvas.fullname" . }}-jobs
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: { name: {{ include "canvas.fullname" . }}-jobs }
+  minReplicaCount: {{ .Values.jobs.keda.min }}
+  maxReplicaCount: {{ .Values.jobs.keda.max }}
+  cooldownPeriod: 120
+  pollingInterval: 15
+  triggers:
+    - type: postgresql
+      metadata:
+        query: "SELECT count(*) FROM delayed_jobs WHERE locked_at IS NULL AND run_at < now()"
+        targetQueryValue: {{ .Values.jobs.keda.jobsPerReplica | quote }}
+        host: {{ include "canvas.dbHost" . }}
+        port: {{ .Values.database.port | quote }}
+        dbName: {{ .Values.database.name }}
+        userName: {{ .Values.database.user }}
+        sslmode: disable
+      authenticationRef: { name: {{ include "canvas.fullname" . }}-keda-pg }
+{{- end }}

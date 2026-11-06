@@ -1,0 +1,4 @@
+Canvas LMS {{ .Chart.AppVersion }} is deploying as "{{ .Release.Name }}".
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  Migrations: kubectl -n {{ .Release.Namespace }} logs job/{{ include "canvas.fullname" . }}-migrate-{{ .Release.Revision }}
+  URL: {{ .Values.canvas.scheme }}://{{ .Values.canvas.domain }}

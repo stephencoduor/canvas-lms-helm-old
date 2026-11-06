@@ -1,0 +1,46 @@
+{{- if .Values.migrate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "canvas.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels: {{- include "canvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # install: runs after the in-chart DB exists; upgrade: runs before new pods roll out
+    "helm.sh/hook": post-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ .Values.migrate.timeoutSeconds }}
+  template:
+    metadata:
+      labels: {{- include "canvas.selector" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-for-db
+          image: {{ include "canvas.image" . }}
+          securityContext: {{- toYaml .Values.restrictedSecurityContext | nindent 12 }}
+          command: ["bash", "-c", "until pg_isready -h {{ include "canvas.dbHost" . }} -p {{ .Values.database.port }}; do sleep 3; done"]
+      containers:
+        - name: migrate
+          image: {{ include "canvas.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.restrictedSecurityContext | nindent 12 }}
+          command: ["bash", "-ec"]
+          args:
+            - |
+              bundle exec rake db:create db:migrate
+              {{- if .Release.IsInstall }}
+              bundle exec rake db:configure_default_settings db:load_initial_data
+              {{- end }}
+              bundle exec rake brand_configs:generate_and_upload_all
+          env: {{- include "canvas.env" . | nindent 12 }}
+          envFrom: {{- include "canvas.envFrom" . | nindent 12 }}
+          volumeMounts: {{- include "canvas.mounts" . | nindent 12 }}
+          resources: {{- toYaml .Values.migrate.resources | nindent 12 }}
+      volumes: {{- include "canvas.volumes" . | nindent 8 }}
+{{- end }}
